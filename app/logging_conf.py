@@ -49,9 +49,8 @@ def setup_logging(level: str = "INFO") -> None:
     root = logging.getLogger()
     root.setLevel(numeric_level)
     root.addHandler(file_handler)
-    # فقط وقتی خروجی ترمینال است console handler اضافه شود تا لاگ فایل دوبله نشود
-    if sys.stdout.isatty():
-        root.addHandler(console_handler)
+    # کنسول همیشه فعال باشد — در GitHub Actions لاگ‌ها فقط از این مسیر دیده می‌شوند
+    root.addHandler(console_handler)
 
     # کاهش نویز کتابخانه‌ها
     for noisy in ("aiogram.event", "aiosqlite", "asyncio"):
