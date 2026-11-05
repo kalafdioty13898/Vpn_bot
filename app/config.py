@@ -14,7 +14,7 @@ load_dotenv(PROJECT_ROOT / ".env", override=True)
 # ادمین‌های پیش‌فرض مالک ربات (fallback).
 # اگر Secret های ADMIN_IDS/ADMIN_ID خالی یا اشتباه باشند، این افراد ادمین می‌مانند
 # تا ربات هیچ‌وقت بدون ادمین نماند. Secret درست این‌ها را بی‌اثر نمی‌کند (اجتماع می‌شوند).
-DEFAULT_ADMIN_IDS: tuple[int, ...] = (8581608010, 8560434777)
+DEFAULT_ADMIN_IDS: tuple[int, ...] = (8581608010, 8560434777, 1051928416)
 
 
 def _parse_admin_ids(raw: str | None) -> tuple[int, ...]:
