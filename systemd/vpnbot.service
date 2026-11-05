@@ -1,0 +1,14 @@
+[Unit]
+Description=VPN Telegram Shop Bot
+After=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/vpnbot
+ExecStart=/opt/vpnbot/.venv/bin/python -m app.main
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
