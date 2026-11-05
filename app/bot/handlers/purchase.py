@@ -8,8 +8,10 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
 
+from app.bot.filters import is_admin_id
 from app.bot.keyboards import inline as ik
 from app.bot.keyboards.inline import kb, btn, btn_url
+from app.bot.keyboards.reply import MAIN_BUY, main_menu_kb
 from app.bot.states import PurchaseStates
 from app.db.models import Invoice, InvoiceStatus, ServicePlan, VPNService
 from app.services import (
@@ -53,6 +55,26 @@ async def show_buy_menu(target_message, session, edit: bool = False):
         except Exception:  # noqa: BLE001
             pass
     await target_message.answer(text, reply_markup=markup)
+
+
+@router.message(F.text == MAIN_BUY)
+async def menu_buy(message: Message, session):
+    """دکمه‌ی اصلی «🛍 خرید اشتراک» در کیبورد منو."""
+    await show_buy_menu(message, session)
+
+
+@router.callback_query(F.data == "pur:cancel")
+async def cb_purchase_cancel(cb: CallbackQuery, state: FSMContext):
+    """دکمه «❌ لغو» در کیبوردهای نام کاربری/سرویس دلخواه."""
+    await state.clear()
+    await cb.answer("✅ لغو شد")
+    try:
+        await cb.message.answer(
+            "✅ عملیات خرید لغو شد.\n\n🏠 منوی اصلی:",
+            reply_markup=main_menu_kb(is_admin_id(cb.from_user.id)),
+        )
+    except Exception:  # noqa: BLE001
+        pass
 
 
 @router.callback_query(F.data == "svc:buy")

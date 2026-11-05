@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from aiogram import F, Router
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
@@ -30,12 +30,14 @@ def _welcome_text(name: str) -> str:
 async def cmd_start(
     message: Message,
     state: FSMContext,
+    command: CommandObject,
     session,
     bot,
 ):
     await state.clear()
 
-    payload = message.get_args() or ""
+    # aiogram 3: پیلود دیپ‌لینک از CommandObject می‌آید (مثل /start ref_XXXX)
+    payload = (command.args or "").strip()
     ref_code = None
     if payload.startswith("ref_"):
         ref_code = payload[4:]
@@ -62,7 +64,6 @@ async def cmd_start(
     if referrer is not None:
         await user_service.get_wallet(session, user.id)
 
-    is_admin = settings.admin_ids and message.from_user.id in settings.admin_ids
     from app.bot.filters import is_admin_id
 
     is_admin = is_admin_id(message.from_user.id)

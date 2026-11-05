@@ -7,9 +7,10 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
+from app.bot.filters import is_admin_id
 from app.bot.handlers.receipts import send_card_info
 from app.bot.keyboards import inline as ik
-from app.bot.keyboards.reply import cancel_kb, CANCEL
+from app.bot.keyboards.reply import cancel_kb, main_menu_kb, CANCEL
 from app.bot.states import WalletStates
 from app.db.models import InvoiceStatus, InvoiceType
 from app.services import order_service, settings_service, user_service
@@ -58,6 +59,20 @@ async def _show_wallet(target, telegram_id: int, session):
         f"🤝 تعداد زیرمجموعه‌های شما: {referrals_count} نفر"
     )
     await target.answer(text, reply_markup=ik.wallet_menu_kb())
+
+
+@router.callback_query(F.data == "wal:cancel")
+async def cb_wallet_cancel(cb: CallbackQuery, state: FSMContext):
+    """دکمه «❌ لغو» در کیبورد شارژ کیف پول."""
+    await state.clear()
+    await cb.answer("✅ لغو شد")
+    try:
+        await cb.message.answer(
+            "✅ عملیات لغو شد.\n\n🏠 منوی اصلی:",
+            reply_markup=main_menu_kb(is_admin_id(cb.from_user.id)),
+        )
+    except Exception:  # noqa: BLE001
+        pass
 
 
 @router.callback_query(F.data == "wallet:dep")
