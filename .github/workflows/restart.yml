@@ -1,0 +1,50 @@
+name: Restart Bot
+
+# ری‌استارت تمیز ربات با آخرین کد main
+# trigger: repository_dispatch با event_type = restart-bot
+# ۱) اجرای در جریان bot.yml لغو می‌شود  ۲) یک اجرای تازه با کد جدید start می‌شود
+
+on:
+  repository_dispatch:
+    types: [restart-bot]
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: vpn-bot-restart
+  cancel-in-progress: true
+
+jobs:
+  restart:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Cancel current bot run(s)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for S in in_progress queued; do
+            gh run list -R "$GITHUB_REPOSITORY" --workflow=bot.yml \
+              --status "$S" --limit 10 --json databaseId \
+              --jq '.[].databaseId' | while read -r id; do
+                [ -n "$id" ] && gh run cancel -R "$GITHUB_REPOSITORY" "$id" || true
+              done
+          done
+          echo "Waiting for cancellation to settle..."
+          sleep 30
+
+      - name: Trigger fresh bot run (latest main)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for i in 1 2 3; do
+            ACTIVE=$(gh run list -R "$GITHUB_REPOSITORY" --workflow=bot.yml \
+              --status in_progress --limit 1 --json databaseId --jq 'length')
+            if [ "$ACTIVE" = "0" ]; then break; fi
+            echo "A bot run is still active; retry $i/3..."
+            sleep 20
+          done
+          gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/bot.yml/dispatches" -f ref=main \
+            && echo "Fresh bot run dispatched with latest code"

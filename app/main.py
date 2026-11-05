@@ -10,8 +10,9 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from app.bot.filters import register_admin
+from app.bot.filters import register_admin, db_admins
 from app.bot.handlers import setup_routers
+from app.bot.keyboards.reply import main_menu_kb
 from app.bot.middlewares.access import AccessMiddleware
 from app.bot.middlewares.db import DbSessionMiddleware
 from app.bot.middlewares.throttle import ThrottleMiddleware
@@ -50,6 +51,17 @@ async def main() -> None:
         for a in admins:
             register_admin(a.telegram_id)
 
+    # --- لیست ادمین‌ها (env + دیتابیس) ---
+    all_admins = list(dict.fromkeys([*settings.admin_ids, *db_admins]))
+    if not all_admins:
+        logger.warning(
+            "No admins configured! Set the ADMIN_IDS secret "
+            "(comma-separated Telegram numeric IDs)."
+        )
+    else:
+        # فقط تعداد لاگ می‌شود؛ لاگ ریپازیتوری عمومی است
+        logger.info("Admins configured: %d", len(all_admins))
+
     bot = Bot(
         token=settings.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
@@ -71,12 +83,7 @@ async def main() -> None:
     # Provisioning + Notifications
     provision_service.init_provisioner(sessionmaker)
 
-    admin_ids = list(settings.admin_ids)
-    from app.bot.filters import db_admins
-
-    for aid in db_admins:
-        if aid not in admin_ids:
-            admin_ids.append(aid)
+    admin_ids = all_admins
     setup_notifications(bot, admin_ids)
 
     # Error handler
@@ -124,6 +131,32 @@ async def main() -> None:
     )
 
     await bot.delete_webhook(drop_pending_updates=True)
+
+    # --- پیام آنلاین‌شدن با منوی اصلی (دکمه پنل مدیریت) برای ادمین‌ها ---
+    try:
+        import time as _time
+
+        from app.services import settings_service as _ss
+
+        async with sessionmaker() as session:
+            last_raw = await _ss.get_setting(session, "last_online_greet")
+            now = int(_time.time())
+            last = int(last_raw) if last_raw and str(last_raw).isdigit() else 0
+            if now - last > 1800:  # حداکثر هر ۳۰ دقیقه یک‌بار
+                await _ss.set_setting(session, "last_online_greet", str(now))
+                await session.commit()
+                for aid in all_admins[:3]:
+                    try:
+                        await bot.send_message(
+                            aid,
+                            "🟢 ربات آنلاین شد و آماده استفاده است.\n\n🏠 منوی اصلی:",
+                            reply_markup=main_menu_kb(True),
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
+    except Exception:  # noqa: BLE001
+        logger.exception("admin online-greeting failed (non-fatal)")
+
     logger.info("Bot @%s started (polling)", me.username)
     print(f"✅ Bot @{me.username} is running... (Ctrl+C برای توقف)")
 

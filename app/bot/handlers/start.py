@@ -145,7 +145,15 @@ async def cb_main_menu(cb: CallbackQuery, state: FSMContext, session):
 
 @router.message(Command("myid"))
 async def cmd_myid(message: Message):
-    await message.answer(f"🆔 آیدی عددی شما: <code>{message.from_user.id}</code>")
+    from app.bot.filters import is_admin_id
+
+    is_admin = is_admin_id(message.from_user.id)
+    status = "✅ شما ادمین هستید" if is_admin else "❌ ادمین نیستید"
+    await message.answer(
+        f"🆔 آیدی عددی شما: <code>{message.from_user.id}</code>\n"
+        f"👑 وضعیت ادمین: {status}\n\n"
+        "اگر ادمین نیستید، این آیدی را در Secret با نام ADMIN_IDS قرار دهید."
+    )
 
 
 @router.message(Command("cancel"))

@@ -13,11 +13,12 @@ load_dotenv(PROJECT_ROOT / ".env", override=True)
 
 
 def _parse_admin_ids(raw: str | None) -> tuple[int, ...]:
+    """پارس ادمین‌ها از ورودی متنی؛ مقاوم به فاصله، کوتیشن، براکت و کامای فارسی."""
     if not raw:
         return ()
     ids: list[int] = []
-    for part in raw.replace(";", ",").split(","):
-        part = part.strip()
+    for part in raw.replace(";", ",").replace("؛", ",").replace("،", ",").split(","):
+        part = part.strip().strip("\"'[]()«» ").strip()
         if part.isdigit():
             ids.append(int(part))
     return tuple(dict.fromkeys(ids))
@@ -43,7 +44,10 @@ def load_settings() -> Settings:
         bot_token=os.getenv("BOT_TOKEN", "").strip(),
         database_url=os.getenv("DATABASE_URL", "").strip()
         or "sqlite+aiosqlite:///./vpnbot.db",
-        admin_ids=_parse_admin_ids(os.getenv("ADMIN_IDS", "")),
+        # هم ADMIN_IDS (جدا با کاما) و هم ADMIN_ID (تکی) پذیرفته می‌شود
+        admin_ids=_parse_admin_ids(
+            f"{os.getenv('ADMIN_IDS', '')},{os.getenv('ADMIN_ID', '')}"
+        ),
         timezone=os.getenv("TIMEZONE", "Asia/Tehran").strip() or "Asia/Tehran",
         log_level=os.getenv("LOG_LEVEL", "INFO").strip().upper(),
         panel_mode=os.getenv("PANEL_MODE", "mock").strip().lower(),

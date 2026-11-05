@@ -75,9 +75,10 @@ jobs:
           END=$(date +%s)
           ELAPSED=$((END - START))
           echo "bot exited with code $CODE after ${ELAPSED}s"
-          # فقط اگر ربات حداقل ۵ دقیقه زنده مانده باشد اجرای بعدی زنجیر می‌شود
-          # (جلوی حلقه‌ی crash سریع گرفته می‌شود؛ cron هر ۶ ساعت دوباره تلاش می‌کند)
-          if [ "$ELAPSED" -ge 300 ]; then
+          # فقط اگر ربات «خودش» با خروج تمیز تمام شده باشد اجرای بعدی زنجیر می‌شود
+          # code 0 = خروج عادی، code 124 = رسیدن به سقف زمانی timeout (عادی است)
+          # اگر ربات cancel شود (کد 143/130) زنجیر نمی‌شود تا از طوفان dispatch جلوگیری شود
+          if { [ "$CODE" -eq 0 ] || [ "$CODE" -eq 124 ]; } && [ "$ELAPSED" -ge 300 ]; then
             echo "chain=yes" >> "$GITHUB_OUTPUT"
           else
             echo "chain=no" >> "$GITHUB_OUTPUT"
