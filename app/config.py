@@ -11,6 +11,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 load_dotenv(PROJECT_ROOT / ".env", override=True)
 
+# ادمین‌های پیش‌فرض مالک ربات (fallback).
+# اگر Secret های ADMIN_IDS/ADMIN_ID خالی یا اشتباه باشند، این افراد ادمین می‌مانند
+# تا ربات هیچ‌وقت بدون ادمین نماند. Secret درست این‌ها را بی‌اثر نمی‌کند (اجتماع می‌شوند).
+DEFAULT_ADMIN_IDS: tuple[int, ...] = (8581608010, 8560434777)
+
 
 def _parse_admin_ids(raw: str | None) -> tuple[int, ...]:
     """پارس ادمین‌ها از ورودی متنی؛ مقاوم به فاصله، کوتیشن، براکت و کامای فارسی."""
@@ -45,9 +50,12 @@ def load_settings() -> Settings:
         database_url=os.getenv("DATABASE_URL", "").strip()
         or "sqlite+aiosqlite:///./vpnbot.db",
         # هم ADMIN_IDS (جدا با کاما) و هم ADMIN_ID (تکی) پذیرفته می‌شود
-        admin_ids=_parse_admin_ids(
-            f"{os.getenv('ADMIN_IDS', '')},{os.getenv('ADMIN_ID', '')}"
-        ),
+        # + ادمین‌های پیش‌فرض همیشه جزو ادمین‌ها هستند (fallback ضد قفل‌شدگی)
+        admin_ids=tuple(dict.fromkeys(
+            _parse_admin_ids(
+                f"{os.getenv('ADMIN_IDS', '')},{os.getenv('ADMIN_ID', '')}"
+            ) + DEFAULT_ADMIN_IDS
+        )),
         timezone=os.getenv("TIMEZONE", "Asia/Tehran").strip() or "Asia/Tehran",
         log_level=os.getenv("LOG_LEVEL", "INFO").strip().upper(),
         panel_mode=os.getenv("PANEL_MODE", "mock").strip().lower(),
