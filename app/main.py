@@ -10,7 +10,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from app.bot.filters import register_admin, db_admins
+from app.bot.filters import register_admin, unregister_admin, db_admins
 from app.bot.handlers import setup_routers
 from app.bot.keyboards.reply import main_menu_kb
 from app.bot.middlewares.access import AccessMiddleware
@@ -40,18 +40,34 @@ async def main() -> None:
     sessionmaker = make_sessionmaker(engine)
 
     await ensure_schema(engine)
+    admins_changed = False
     async with sessionmaker() as session:
         await seed_defaults(session)
-        # کش ادمین‌های دیتابیسی
+        # کش ادمین‌های دیتابیسی + همگام‌سازی با تنظیمات
         from sqlalchemy import select
 
-        from app.db.models import Admin
+        from app.db.models import Admin, UserRole
 
         admins = (await session.execute(select(Admin))).scalars().all()
-        for a in admins:
-            register_admin(a.telegram_id)
+        db_ids = {a.telegram_id for a in admins}
+        wanted = set(settings.admin_ids)
 
-    # --- لیست ادمین‌ها (env + دیتابیس) ---
+        # ادمین‌هایی که دیگر در تنظیمات نیستند حذف می‌شوند (مثلاً آیدی قدیمی)
+        for a in admins:
+            if a.telegram_id not in wanted:
+                await session.delete(a)
+                unregister_admin(a.telegram_id)
+                admins_changed = True
+        # ادمین‌های جدید اضافه می‌شوند
+        for aid in sorted(wanted - db_ids):
+            session.add(Admin(telegram_id=aid, role=UserRole.SUPER_ADMIN))
+            register_admin(aid)
+            admins_changed = True
+        if admins_changed:
+            await session.commit()
+            logger.info("Admin list synced with configuration")
+
+    # --- لیست نهایی ادمین‌ها ---
     all_admins = list(dict.fromkeys([*settings.admin_ids, *db_admins]))
     if not all_admins:
         logger.warning(
@@ -59,8 +75,9 @@ async def main() -> None:
             "(comma-separated Telegram numeric IDs)."
         )
     else:
-        # فقط تعداد لاگ می‌شود؛ لاگ ریپازیتوری عمومی است
-        logger.info("Admins configured: %d", len(all_admins))
+        # برای دیباگ: فقط ۳ رقم آخر آیدی‌ها لاگ می‌شود (لاگ عمومی است)
+        tails = ",".join("..." + str(a)[-3:] for a in all_admins)
+        logger.info("Admins configured: %d [%s]", len(all_admins), tails)
 
     bot = Bot(
         token=settings.bot_token,
@@ -142,7 +159,7 @@ async def main() -> None:
             last_raw = await _ss.get_setting(session, "last_online_greet")
             now = int(_time.time())
             last = int(last_raw) if last_raw and str(last_raw).isdigit() else 0
-            if now - last > 1800:  # حداکثر هر ۳۰ دقیقه یک‌بار
+            if admins_changed or now - last > 1800:  # تغییر ادمین‌ها یا گذشت ۳۰ دقیقه
                 await _ss.set_setting(session, "last_online_greet", str(now))
                 await session.commit()
                 for aid in all_admins[:3]:
