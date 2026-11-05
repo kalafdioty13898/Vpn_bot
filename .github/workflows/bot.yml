@@ -1,0 +1,104 @@
+name: VPN Bot Runner
+
+# اجرای ربات به صورت ۲۴/۷ روی GitHub Actions
+# - دستی: Actions -> VPN Bot Runner -> Run workflow
+# - زنجیره‌ای: هر اجرا در پایان، اجرای بعدی را خودکار trigger می‌کند
+# - اهرم ایمنی: هر ۶ ساعت یک اجرای پشتیبان زمان‌بندی شده است
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */6 * * *'
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: vpn-bot-run
+  cancel-in-progress: false
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore DB from previous run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ART_ID=$(gh api "repos/${{ github.repository }}/actions/artifacts?per_page=100" \
+            --jq '[.artifacts[] | select(.name=="bot-db" and .expired==false)][0].id // empty')
+          if [ -n "$ART_ID" ]; then
+            curl -sSL -H "Authorization: Bearer $GH_TOKEN" -o /tmp/db.zip \
+              "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/$ART_ID/zip"
+            unzip -o /tmp/db.zip -d .
+            rm -f /tmp/db.zip
+            echo "DB restored from artifact $ART_ID"
+          else
+            echo "No previous DB found - fresh start"
+          fi
+          ls -la vpnbot.db 2>/dev/null || true
+
+      - name: Run bot
+        id: bot
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          ADMIN_IDS: ${{ secrets.ADMIN_IDS }}
+          ADMIN_ID: ${{ secrets.ADMIN_ID }}
+          DATABASE_URL: sqlite+aiosqlite:///./vpnbot.db
+          PANEL_MODE: mock
+          TIMEZONE: Asia/Tehran
+          LOG_LEVEL: INFO
+          PYTHONUNBUFFERED: '1'
+        run: |
+          # اگر سکرت با نام ADMIN_ID ساخته شده باشد به عنوان fallback استفاده می‌شود
+          if [ -z "$ADMIN_IDS" ] && [ -n "$ADMIN_ID" ]; then
+            export ADMIN_IDS="$ADMIN_ID"
+          fi
+          START=$(date +%s)
+          timeout 18600 python -m app.main; CODE=$?
+          END=$(date +%s)
+          ELAPSED=$((END - START))
+          echo "bot exited with code $CODE after ${ELAPSED}s"
+          # فقط اگر ربات حداقل ۵ دقیقه زنده مانده باشد اجرای بعدی زنجیر می‌شود
+          # (جلوی حلقه‌ی crash سریع گرفته می‌شود؛ cron هر ۶ ساعت دوباره تلاش می‌کند)
+          if [ "$ELAPSED" -ge 300 ]; then
+            echo "chain=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "chain=no" >> "$GITHUB_OUTPUT"
+          fi
+          exit 0
+
+      - name: Save DB for next run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bot-db
+          path: vpnbot.db
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Chain next run
+        if: always() && steps.bot.outputs.chain == 'yes'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sleep 15
+          if gh api -X POST "repos/${{ github.repository }}/actions/workflows/bot.yml/dispatches" -f ref=main; then
+            echo "Next run queued successfully"
+          else
+            echo "Could not chain next run - the 6h schedule safety net will retry"
+          fi
